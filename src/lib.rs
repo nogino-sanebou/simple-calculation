@@ -3,90 +3,88 @@
 ///
 pub fn calculation(target: &String) -> Result<String, String> {
     // トークン単位に切り分け
-    // let mut tokens = tokenize(target)?;
+    let mut tokens = tokenize(target)?;
 
-    // 切り分けたトークンを元に計算
-    // parse_token(&mut tokens);
-
-
-    todo!()
+    // 切り分けたトークンを元に計算し、返却する
+    Ok(parse_token(&mut tokens))
 }
 
 
 /// 文字列をトークン単位に切り分けます
 fn tokenize(target: &String) -> Result<Vec<Token>, String> {
+    let mut tokens = Vec::new();
+
+    let chars = target.chars().collect::<Vec<char>>();
+    let mut index = 0;
+    while index < chars.len() {
+        println!("1={}", chars.get(index).unwrap());
+        match chars.get(index).unwrap() {
+            ' ' => {
+                index += 1;
+                continue;
+            },
+            '(' => tokens.push(Token::Brackets(Brackets::Start)),
+            ')' => tokens.push(Token::Brackets(Brackets::End)),
+            '+' => tokens.push(Token::Operator(Operator::Plus)),
+            '-' => tokens.push(Token::Operator(Operator::Minus)),
+            '*' => tokens.push(Token::Operator(Operator::Multiply)),
+            '/' => tokens.push(Token::Operator(Operator::Divide)),
+            // 連続する数字は1つのトークンとして結合
+            // 「.」が連続して出現した場合はエラーとする
+            '0' | '1' | '2' | '3' | '4' |
+            '5' | '6' | '7' | '8' | '9' => {
+                println!("2={}", chars.get(index).unwrap());
+                let mut num = chars.get(index).unwrap().to_string();
+
+                index += 1;
+                while index < chars.len() {
+                    println!("3={}", chars.get(index).unwrap());
+                    match chars.get(index).unwrap() {
+                        '0' | '1' | '2' | '3' | '4' |
+                        '5' | '6' | '7' | '8' | '9' => {
+                            num.push_str(
+                                chars.get(index).unwrap().to_string().as_str()
+                            );
+                        },
+                        '.' => {
+                            if num.ends_with(".") {
+                                return Err(
+                                    String::from("「.」が連続して出現しました。"));
+                            }
+                            num.push('.');
+                        },
+                        _ => break,
+                    }
+                    index += 1;
+                }
+
+                tokens.push(Token::Value(num));
+                continue;
+            },
+            _ => return Err(
+                format!("予期せぬ文字が出現しました。「{}」"
+                        , chars.get(index).unwrap().to_string())
+            ),
+        }
+        index += 1;
+    }
+
+    Ok(tokens)
+}
+
+fn parse_token(target: &mut Vec<Token>) -> String {
     todo!()
 }
 
-fn parse_token(target: &mut Vec<Token>, index: usize) -> (Block, usize) {
-    let mut stack = Vec::new();
 
-
-    for mut index in index..target.len() {
-        match target.get(index).unwrap() {
-            Token::Brackets(value) => {
-                match value {
-                    Brackets::Start => {
-                        let (b, i)
-                            = parse_token(&mut target[1..].to_vec(), index);
-                        stack.push(Value::Block(Box::new(b)));
-                        index = i;
-                    },
-                    Brackets::End => {
-                        let b = Block::new(
-                            stack.pop().unwrap(),
-                            stack.pop().unwrap(),
-                            stack.pop().unwrap(),
-                        );
-
-                        return (b, index);
-                    },
-                }
-            },
-            Token::Value(value) => {
-                stack.push(Value::Val(value.to_string()));
-            },
-            Token::Operator(value) => {
-                let operation = match value {
-                    Operator::Plus => Operator::Plus,
-                    Operator::Minus => Operator::Minus,
-                    Operator::Multiply => Operator::Multiply,
-                    Operator::Divide => Operator::Divide,
-                };
-
-                if stack.len() == 3 {
-                    stack.clear();
-
-                    let block = Block::new(
-                        stack.pop().unwrap(),
-                        stack.pop().unwrap(),
-                        stack.pop().unwrap(),
-                    );
-                    stack.push(Value::Block(Box::new(block)));
-                }
-                stack.push(Value::Op(operation));
-            },
-        }
-    }
-
-    let block = Block::new(
-        stack.pop().unwrap(),
-        stack.pop().unwrap(),
-        stack.pop().unwrap(),
-    );
-
-    (block, 0)
-}
-
-
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Token {
     Value(String),
     Operator(Operator),
     Brackets(Brackets),
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Operator {
     Plus,
     Minus,
@@ -94,12 +92,11 @@ enum Operator {
     Divide,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Brackets {
     Start,
     End,
 }
-
 
 enum Value {
     Val(String),
@@ -122,6 +119,7 @@ impl Block {
     }
 
     fn execute(&self) -> String {
+        // 左辺の計算
         let lhs = match &self.lhs {
             Value::Val(value) => {
                 value.to_string()
@@ -133,6 +131,7 @@ impl Block {
         };
         let lhs = lhs.parse::<f64>().unwrap();
 
+        // 右辺の計算
         let rhs = match &self.rhs {
             Value::Val(value) => {
                 value.to_string()
@@ -144,7 +143,7 @@ impl Block {
         };
         let rhs = rhs.parse::<f64>().unwrap();
 
-
+        // 演算子ごとに計算し、その結果を返却
         match &self.operator {
             Value::Op(value) => {
                 match value {
@@ -169,6 +168,94 @@ mod tests {
     use crate::Block;
     use crate::Operator;
     use super::*;
+
+    #[test]
+    fn tokenize_test1() {
+        let expect = vec![
+            Token::Value(String::from("1")),
+            Token::Operator(Operator::Plus),
+            Token::Value(String::from("2")),
+            Token::Operator(Operator::Minus),
+            Token::Value(String::from("3")),
+        ];
+
+        let formula = String::from("1+2 - 3");
+        let tokens = tokenize(&formula).unwrap();
+
+        assert_eq!(expect, tokens);
+    }
+
+    #[test]
+    fn tokenize_test2() {
+        let expect = vec![
+            Token::Value(String::from("100")),
+            Token::Operator(Operator::Multiply),
+            Token::Value(String::from("20")),
+            Token::Operator(Operator::Divide),
+            Token::Value(String::from("1505")),
+        ];
+
+        let formula = String::from("100 *20 /1505");
+        let tokens = tokenize(&formula).unwrap();
+
+        assert_eq!(expect, tokens);
+    }
+
+    #[test]
+    fn tokenize_test3() {
+        let expect = vec![
+            Token::Value(String::from("12.34")),
+            Token::Operator(Operator::Minus),
+            Token::Value(String::from("5.678")),
+        ];
+
+        let formula = String::from("12.34-5.678");
+        let tokens = tokenize(&formula).unwrap();
+
+        assert_eq!(expect, tokens);
+    }
+
+    #[test]
+    fn tokenize_test4() {
+        let expect = vec![
+            Token::Brackets(Brackets::Start),
+            Token::Value(String::from("2")),
+            Token::Operator(Operator::Multiply),
+            Token::Value(String::from("2")),
+            Token::Brackets(Brackets::End),
+            Token::Operator(Operator::Plus),
+            Token::Value(String::from("30")),
+        ];
+
+        let formula = String::from("(2 * 2) + 30");
+        let tokens = tokenize(&formula).unwrap();
+
+        assert_eq!(expect, tokens);
+    }
+
+    #[test]
+    fn tokenize_err_test1() {
+        let formula = String::from("23.5 + 10..45");
+        let tokens = tokenize(&formula);
+
+        match tokens {
+            Ok(_) => {panic!("エラーが発生しませんでした。")},
+            Err(value) => assert_eq!("「.」が連続して出現しました。", value),
+        }
+    }
+
+    #[test]
+    fn tokenize_err_test2() {
+        let formula = String::from("1 + あ");
+        let tokens = tokenize(&formula);
+
+        match tokens {
+            Ok(_) => {panic!("エラーが発生しませんでした。")},
+            Err(value) => {
+                assert_eq!("予期せぬ文字が出現しました。「あ」", value)
+            },
+        }
+    }
 
     // 1 + 2
     #[test]
