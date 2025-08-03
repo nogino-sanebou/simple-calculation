@@ -173,7 +173,8 @@ fn parse_token(target: &[Token]) -> Result<String, String> {
     }
 
 
-    Ok(stack.pop().unwrap().execute())
+    let value = stack.pop().unwrap().execute()?;
+    Ok(value)
 }
 
 ///
@@ -283,16 +284,16 @@ impl Block {
         }
     }
 
-    fn execute(&self) -> String {
+    fn execute(&self) -> Result<String, String> {
         // 左辺の計算
         let lhs = match &self.lhs {
             Value::Val(value) => {
                 value.to_string()
             },
             Value::Block(value) => {
-                value.execute()
+                value.execute()?
             },
-            _ => panic!("左辺に演算子が出現しました。"),
+            _ => return Err(String::from("左辺に演算子が出現しました。")),
         };
         let lhs = lhs.parse::<f64>().unwrap();
 
@@ -302,23 +303,23 @@ impl Block {
                 value.to_string()
             },
             Value::Block(value) => {
-                value.execute()
+                value.execute()?
             },
-            _ => panic!("右辺に演算子が出現しました。"),
+            _ => return Err(String::from("右辺に演算子が出現しました。")),
         };
         let rhs = rhs.parse::<f64>().unwrap();
 
         // 演算子ごとに計算し、その結果を返却
         match &self.operator {
             Value::Op(value) => {
-                match value {
+                Ok(match value {
                     Operator::Plus => (lhs + rhs).to_string(),
                     Operator::Minus => (lhs - rhs).to_string(),
                     Operator::Multiply => (lhs * rhs).to_string(),
                     Operator::Divide => (lhs / rhs).to_string(),
-                }
+                })
             },
-            _ => panic!("演算子を想定していましたが、演算子以外が出現しました。")
+            _ => Err(String::from("演算子を想定していましたが、演算子以外が出現しました。")),
         }
     }
 }
@@ -533,7 +534,7 @@ mod tests {
             Value::Op(Operator::Plus),
         );
 
-        assert_eq!("3", block.execute().as_str());
+        assert_eq!("3", block.execute().unwrap().as_str());
     }
 
     // 1 - 2
@@ -545,7 +546,7 @@ mod tests {
             Value::Op(Operator::Minus),
         );
 
-        assert_eq!("-1", block.execute().as_str());
+        assert_eq!("-1", block.execute().unwrap().as_str());
     }
 
     // 2 * 3
@@ -557,7 +558,7 @@ mod tests {
             Value::Op(Operator::Multiply),
         );
 
-        assert_eq!("6", block.execute().as_str());
+        assert_eq!("6", block.execute().unwrap().as_str());
     }
 
     // 10 / 5
@@ -569,7 +570,7 @@ mod tests {
             Value::Op(Operator::Divide),
         );
 
-        assert_eq!("2", block.execute().as_str());
+        assert_eq!("2", block.execute().unwrap().as_str());
     }
 
     // 4 * 4 - 6
@@ -587,7 +588,7 @@ mod tests {
             Value::Op(Operator::Minus),
         );
 
-        assert_eq!("10", block.execute().as_str());
+        assert_eq!("10", block.execute().unwrap().as_str());
     }
 
     // (5 + 5) / 2
@@ -605,7 +606,7 @@ mod tests {
             Value::Op(Operator::Divide),
         );
 
-        assert_eq!("0.2", block.execute().as_str());
+        assert_eq!("0.2", block.execute().unwrap().as_str());
     }
 
     // (3 + 7) * (6 + 4)
@@ -629,7 +630,7 @@ mod tests {
             Value::Op(Operator::Multiply),
         );
 
-        assert_eq!("100", block.execute().as_str());
+        assert_eq!("100", block.execute().unwrap().as_str());
     }
 
     // 24 / (2 * 2 + 4)
@@ -653,6 +654,6 @@ mod tests {
             Value::Op(Operator::Divide),
         );
 
-        assert_eq!("3", block.execute().as_str());
+        assert_eq!("3", block.execute().unwrap().as_str());
     }
 }
