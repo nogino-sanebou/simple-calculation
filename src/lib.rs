@@ -89,6 +89,17 @@ fn parse_token(target: &[Token]) -> Result<String, String> {
                     index += 1;
                     Value::Val(value.to_string())
                 },
+                // かっこが出現した場合、かっこ内を先に処理する
+                Token::Brackets(value) => {
+                    match value {
+                        Brackets::Start => {
+                            let (val, i) = parse_inner_brackets(target, index)?;
+                            index = i;
+                            val
+                        },
+                        _ => return Err(String::from("想定外の終了かっこが出現しました。")),
+                    }
+                },
                 _ => {
                     let message= String::from(
                         "数値を期待していましたが、数値以外が出現しました。"
@@ -143,7 +154,17 @@ fn parse_token(target: &[Token]) -> Result<String, String> {
                 },
                 _ => return Err(String::from("右辺の取得に失敗しました。")),
             },
-            _ => return Err(String::from("数値を期待していましたが、数値以外が出現しました。")),
+            // かっこが出現した場合、かっこ内を先に処理する
+            Token::Brackets(value) => {
+                match value {
+                    Brackets::Start => {
+                        let (val, i) = parse_inner_brackets(target, index)?;
+                        index = i - 1;
+                        val
+                    },
+                    _ => return Err(String::from("想定外の終了かっこが出現しました。")),
+                }
+            },
         };
 
         stack.push(Block::new(lhs, rhs, operator));
@@ -153,6 +174,69 @@ fn parse_token(target: &[Token]) -> Result<String, String> {
 
 
     Ok(stack.pop().unwrap().execute())
+}
+
+///
+/// 通常かっこ、多重かっこの計算処理を行います
+///
+fn parse_inner_brackets(target: &[Token], index: usize) -> Result<(Value, usize), String> {
+    let mut expression = Vec::new();
+    let mut brackets = Vec::new();
+
+    let mut index = index + 1;
+    while index < target.len() {
+        match target.get(index).ok_or("値の取得に失敗しました。")? {
+            Token::Value(value) => {
+                expression.push(Token::Value(value.to_string()));
+            },
+            Token::Operator(value) => {
+                expression.push(Token::Operator(
+                    match value {
+                        Operator::Plus => Operator::Plus,
+                        Operator::Minus => Operator::Minus,
+                        Operator::Multiply => Operator::Multiply,
+                        Operator::Divide => Operator::Divide,
+                    }
+                ));
+            },
+            // 多重かっこだった場合の処理
+            Token::Brackets(value) => {
+                match value {
+                    Brackets::Start => {
+                        brackets.push(Brackets::Start);
+                        expression.push(
+                            Token::Brackets(Brackets::Start)
+                        );
+                    },
+                    Brackets::End => {
+                        if brackets.is_empty() {
+                            index += 1;
+                            break;
+                        } else {
+                            brackets.pop().unwrap();
+                            expression.push(
+                                Token::Brackets(Brackets::End)
+                            );
+                        }
+                    }
+                }
+            },
+        }
+        index += 1;
+    }
+
+    let value = Value::Val(parse_token(&expression)?);
+    Ok((value, index))
+}
+
+///
+/// 2 * 3 - 4 / 5 → (2 * 3) - (4 / 5)
+/// のように優先順位が上の演算子の開始・終了にかっこを付けます
+///
+fn adjust_brackets(target: &[Token]) -> Vec<Token> {
+
+
+    todo!()
 }
 
 
@@ -383,6 +467,60 @@ mod tests {
         let result = parse_token(&tokens.unwrap());
 
         assert_eq!(String::from("8.3"), result.unwrap());
+    }
+
+    #[test]
+    fn parse_token_test6() {
+        let formula = String::from("(2 + 2) * (3 + 3)");
+        let tokens = tokenize(&formula);
+        let result = parse_token(&tokens.unwrap());
+
+        assert_eq!(String::from("24"), result.unwrap());
+    }
+
+    #[test]
+    fn parse_token_test7() {
+        let formula = String::from("5 * (4 + 4)");
+        let tokens = tokenize(&formula);
+        let result = parse_token(&tokens.unwrap());
+
+        assert_eq!(String::from("40"), result.unwrap());
+    }
+
+    #[test]
+    fn parse_token_test8() {
+        let formula = String::from("(6 - 2) / 2");
+        let tokens = tokenize(&formula);
+        let result = parse_token(&tokens.unwrap());
+
+        assert_eq!(String::from("2"), result.unwrap());
+    }
+
+    #[test]
+    fn parse_token_test9() {
+        let formula = String::from("((2 + 2) * (5 + 5)) / 2");
+        let tokens = tokenize(&formula);
+        let result = parse_token(&tokens.unwrap());
+
+        assert_eq!(String::from("20"), result.unwrap());
+    }
+
+    #[test]
+    fn parse_token_test10() {
+        let formula = String::from("3 * (((5 + 5) * 2) + 10) / 2");
+        let tokens = tokenize(&formula);
+        let result = parse_token(&tokens.unwrap());
+
+        assert_eq!(String::from("45"), result.unwrap());
+    }
+
+    #[test]
+    fn parse_token_test11() {
+        let formula = String::from("10 * (((1 + 1) / 2) - 9)");
+        let tokens = tokenize(&formula);
+        let result = parse_token(&tokens.unwrap());
+
+        assert_eq!(String::from("-80"), result.unwrap());
     }
 
     //----- Block構造体の execute test ------------------------------------------
