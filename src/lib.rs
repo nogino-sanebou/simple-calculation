@@ -5,13 +5,14 @@ pub fn calculation(target: &str) -> Result<String, String> {
     // トークン単位に切り分け
     let tokens = tokenize(target)?;
 
+    // 優先順位の調整
+    let tokens = adjust_brackets(&tokens);
+
     // 切り分けたトークンを元に計算し、返却する
     let result = parse_token(&tokens)?;
 
-
     Ok(result)
 }
-
 
 ///
 /// 文字列をトークン単位に切り分けます
@@ -71,6 +72,79 @@ fn tokenize(target: &str) -> Result<Vec<Token>, String> {
     }
 
     Ok(tokens)
+}
+
+///
+/// 2 * 3 - 4 / 5 → (2 * 3) - (4 / 5)
+/// のように優先順位が上の演算子の開始・終了にかっこを付けます
+///
+fn adjust_brackets(target: &[Token]) -> Vec<Token> {
+    let mut result = Vec::new();
+    let mut brackets_flag = false;
+
+    let mut index = 0;
+    for item in target.iter() {
+        match item {
+            Token::Value(value) => {
+                result.push(Token::Value(value.to_string()));
+                // 開始かっこが追加されていた場合、終了かっこも追加する
+                if brackets_flag {
+                    result.push(Token::Brackets(Brackets::End));
+                    index += 1;
+                    brackets_flag = false;
+                }
+            },
+            Token::Brackets(value) => {
+                // かっこが出現した場合は追加かっこは削除する
+                if brackets_flag {
+                    result.remove(index - 3);
+                    index -= 1;
+                    brackets_flag = false;
+                }
+                result.push(Token::Brackets(
+                    match value {
+                        Brackets::Start => Brackets::Start,
+                        Brackets::End => Brackets::End
+                    }
+                ));
+            },
+            Token::Operator(value) => {
+                match value {
+                    Operator::Plus => {
+                        result.push(Token::Operator(Operator::Plus));
+                    },
+                    Operator::Minus => {
+                        result.push(Token::Operator(Operator::Minus));
+                    },
+                    Operator::Multiply => {
+                        match result.get(index - 1).unwrap() {
+                            Token::Value(_) => {
+                                result.insert(index - 1, Token::Brackets(Brackets::Start));
+                                result.push(Token::Operator(Operator::Multiply));
+                                index += 1;
+                                brackets_flag = true;
+                            },
+                            _ => result.push(Token::Operator(Operator::Multiply)),
+                        }
+                    },
+                    Operator::Divide => {
+                        match result.get(index - 1).unwrap() {
+                            Token::Value(_) => {
+                                result.insert(index - 1, Token::Brackets(Brackets::Start));
+                                result.push(Token::Operator(Operator::Divide));
+                                index += 1;
+                                brackets_flag = true;
+                            },
+                            _ => result.push(Token::Operator(Operator::Divide)),
+                        }
+                    },
+                }
+            }
+        }
+        index += 1;
+    }
+
+    result
 }
 
 ///
@@ -227,17 +301,6 @@ fn parse_inner_brackets(target: &[Token], index: usize) -> Result<(Value, usize)
     let value = Value::Val(parse_token(&expression)?);
     Ok((value, index))
 }
-
-///
-/// 2 * 3 - 4 / 5 → (2 * 3) - (4 / 5)
-/// のように優先順位が上の演算子の開始・終了にかっこを付けます
-///
-fn adjust_brackets(target: &[Token]) -> Vec<Token> {
-
-
-    todo!()
-}
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Token {
@@ -522,6 +585,111 @@ mod tests {
         assert_eq!(String::from("-80"), result.unwrap());
     }
 
+    //---- adjust_brackets test-------------------------------------------------
+    #[test]
+    fn adjust_brackets_test1() {
+        let tokens = tokenize("2 * 2 + 1").unwrap();
+        let adjust_tokens = adjust_brackets(&tokens);
+
+        let expect = vec![
+            Token::Brackets(Brackets::Start),
+            Token::Value(String::from("2")),
+            Token::Operator(Operator::Multiply),
+            Token::Value(String::from("2")),
+            Token::Brackets(Brackets::End),
+            Token::Operator(Operator::Plus),
+            Token::Value(String::from("1")),
+        ];
+
+        assert_eq!(expect, adjust_tokens);
+    }
+
+    #[test]
+    fn adjust_brackets_test2() {
+        let tokens = tokenize("2 + 2 / 1").unwrap();
+        let adjust_tokens = adjust_brackets(&tokens);
+
+        let expect = vec![
+            Token::Value(String::from("2")),
+            Token::Operator(Operator::Plus),
+            Token::Brackets(Brackets::Start),
+            Token::Value(String::from("2")),
+            Token::Operator(Operator::Divide),
+            Token::Value(String::from("1")),
+            Token::Brackets(Brackets::End),
+        ];
+
+        assert_eq!(expect, adjust_tokens);
+    }
+
+    #[test]
+    fn adjust_brackets_test3() {
+        let tokens = tokenize("1 * 2 + 3 / 4").unwrap();
+        let adjust_tokens = adjust_brackets(&tokens);
+
+        let expect = vec![
+            Token::Brackets(Brackets::Start),
+            Token::Value(String::from("1")),
+            Token::Operator(Operator::Multiply),
+            Token::Value(String::from("2")),
+            Token::Brackets(Brackets::End),
+            Token::Operator(Operator::Plus),
+            Token::Brackets(Brackets::Start),
+            Token::Value(String::from("3")),
+            Token::Operator(Operator::Divide),
+            Token::Value(String::from("4")),
+            Token::Brackets(Brackets::End),
+        ];
+
+        assert_eq!(expect, adjust_tokens);
+    }
+
+    #[test]
+    fn adjust_brackets_test4() {
+        let tokens = tokenize("(0 + 1 * 2) - 4 / 2").unwrap();
+        let adjust_tokens = adjust_brackets(&tokens);
+
+        let expect = vec![
+            Token::Brackets(Brackets::Start),
+            Token::Value(String::from("0")),
+            Token::Operator(Operator::Plus),
+            Token::Brackets(Brackets::Start),
+            Token::Value(String::from("1")),
+            Token::Operator(Operator::Multiply),
+            Token::Value(String::from("2")),
+            Token::Brackets(Brackets::End),
+            Token::Brackets(Brackets::End),
+            Token::Operator(Operator::Minus),
+            Token::Brackets(Brackets::Start),
+            Token::Value(String::from("4")),
+            Token::Operator(Operator::Divide),
+            Token::Value(String::from("2")),
+            Token::Brackets(Brackets::End),
+        ];
+
+        assert_eq!(expect, adjust_tokens);
+    }
+
+    #[test]
+    fn adjust_brackets_test5() {
+        let tokens = tokenize("1 * (2 + 3) / 4").unwrap();
+        let adjust_tokens = adjust_brackets(&tokens);
+
+        let expect = vec![
+            Token::Value(String::from("1")),
+            Token::Operator(Operator::Multiply),
+            Token::Brackets(Brackets::Start),
+            Token::Value(String::from("2")),
+            Token::Operator(Operator::Plus),
+            Token::Value(String::from("3")),
+            Token::Brackets(Brackets::End),
+            Token::Operator(Operator::Divide),
+            Token::Value(String::from("4")),
+        ];
+
+        assert_eq!(expect, adjust_tokens);
+    }
+
     //----- Block構造体の execute test ------------------------------------------
     // 1 + 2
     #[test]
@@ -653,5 +821,52 @@ mod tests {
         );
 
         assert_eq!("3", block.execute().unwrap().as_str());
+    }
+
+    //----- calculation test ---------------------------------------------------
+    #[test]
+    fn calculation_test1() {
+        let result = calculation("10 * 2 + 1").unwrap();
+        assert_eq!(String::from("21"), result);
+    }
+
+    #[test]
+    fn calculation_test2() {
+        let result = calculation("10 * 2 + 1 - 2 + 10 / 2").unwrap();
+        assert_eq!(String::from("24"), result);
+    }
+
+    #[test]
+    fn calculation_test3() {
+        let result = calculation("(2.5 + 1.3) * 2").unwrap();
+        assert_eq!(String::from("7.6"), result);
+    }
+
+    #[test]
+    fn calculation_test4() {
+        let result = calculation("(3 - 4 * 2) / (9 / 3 - 1)").unwrap();
+        assert_eq!(String::from("-2.5"), result);
+    }
+
+    #[test]
+    fn calculation_test5() {
+        let result = calculation("((2 * (1 + 1)) + 3) / 2").unwrap();
+        assert_eq!(String::from("3.5"), result);
+    }
+
+    #[test]
+    fn calculation_error_test1() {
+        match calculation("2.5 + 3..5") {
+            Ok(_) => panic!("エラーが発生しませんでした。"),
+            Err(value) => assert_eq!("「.」が連続して出現しました。", value),
+        }
+    }
+
+    #[test]
+    fn calculation_error_test2() {
+        match calculation("ろ + 3..5") {
+            Ok(_) => panic!("エラーが発生しませんでした。"),
+            Err(value) => assert_eq!("予期せぬ文字が出現しました。「ろ」", value),
+        }
     }
 }
