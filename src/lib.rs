@@ -132,8 +132,7 @@ fn parse_token(target: &[Token]) -> Result<String, String> {
             Token::Operator(value) => match value {
                 Operator::Plus => {
                     index += 1;
-                    let val
-                        = target.get(index).ok_or("右辺の取得に失敗しました。")?;
+                    let val = target.get(index).ok_or("右辺の取得に失敗しました。")?;
                     Value::Val(match val {
                         Token::Value(val2) => {
                             val2.to_string()
@@ -143,8 +142,7 @@ fn parse_token(target: &[Token]) -> Result<String, String> {
                 },
                 Operator::Minus => {
                     index += 1;
-                    let val
-                        = target.get(index).ok_or("右辺の取得に失敗しました。")?;
+                    let val = target.get(index).ok_or("右辺の取得に失敗しました。")?;
                     Value::Val(match val {
                         Token::Value(val2) => {
                             format!("-{val2}")
